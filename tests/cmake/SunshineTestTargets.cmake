@@ -59,5 +59,9 @@ function(sunshine_add_test_target)
     endforeach()
 
     add_test(NAME ${SUNSHINE_TEST_NAME} COMMAND ${SUNSHINE_TEST_NAME})
-    set_tests_properties(${SUNSHINE_TEST_NAME} PROPERTIES LABELS "${SUNSHINE_TEST_CATEGORY}")
+    # Some tests read fixtures such as src_assets/ through repository-relative
+    # paths, which only resolve from the repository root.
+    set_tests_properties(${SUNSHINE_TEST_NAME} PROPERTIES
+        LABELS "${SUNSHINE_TEST_CATEGORY}"
+        WORKING_DIRECTORY "${SUNSHINE_TEST_REPOSITORY_ROOT}")
 endfunction()
