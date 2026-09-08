@@ -72,6 +72,8 @@ namespace kwin::vdisplay {
     constexpr uint32_t device_version_max = 23;
     /// Binding kde_output_device_registry_v2 below 21 is a protocol error.
     constexpr uint32_t device_registry_version_min = 21;
+    /// kde_output_device_v2 only gained its release request in version 21.
+    constexpr uint32_t device_release_version_min = 21;
     /// Accept a mode whose refresh is within 1 Hz of what was asked for.
     constexpr int refresh_tolerance_mhz = 1000;
 
@@ -475,7 +477,14 @@ namespace kwin::vdisplay {
           }
         }
         for (const auto &device : devices_) {
-          if (device->proxy) {
+          if (!device->proxy) {
+            continue;
+          }
+          // release is a destructor request added in version 21; below that the
+          // proxy can only be dropped locally.
+          if (wl_proxy_get_version(reinterpret_cast<struct wl_proxy *>(device->proxy)) >= device_release_version_min) {
+            kde_output_device_v2_release(device->proxy);
+          } else {
             kde_output_device_v2_destroy(device->proxy);
           }
         }

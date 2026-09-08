@@ -50,6 +50,27 @@ warning is logged.
 Rates such as 59.94 Hz are preserved: the client's `framerateX100` is converted
 straight to mHz.
 
+## Building on CachyOS / Arch
+
+```bash
+sudo pacman -S --needed base-devel cmake git ninja nodejs npm \
+  boost libcap libdrm libevdev libnotify libpulse libva libx11 libxcb \
+  libxfixes libxrandr libxtst libpipewire wayland wayland-protocols \
+  numactl openssl curl miniupnpc avahi nlohmann-json
+
+git clone --recurse-submodules <your fork> vibepollo
+cd vibepollo
+cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
+cmake --build build -j"$(nproc)"
+```
+
+Add `-DSUNSHINE_ENABLE_CUDA=ON` for NVENC on NVIDIA (needs the `cuda` package).
+`SUNSHINE_ENABLE_KWIN` is on by default and is what this feature needs.
+
+On an NVIDIA + Plasma Wayland host, prefer the KWin capture backend. KMS grab is
+not usable with the proprietary driver, and the virtual display path described
+here goes through KWin anyway.
+
 ## Enabling it
 
 Either:
