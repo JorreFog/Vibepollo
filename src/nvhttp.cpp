@@ -89,6 +89,19 @@ namespace nvhttp {
       )
         .count();
     }
+
+    bool has_stream_session_activity() {
+      // RTSP removes STOPPING sessions from session_count() before stream::session::join()
+      // returns; pending launches/creations reserve the process-wide runtime layer
+      // before either protocol publishes an active session.
+      return rtsp_stream::has_pending_launch_or_startup() ||
+             rtsp_stream::session_count_no_cleanup() > 0 ||
+             stream::session::running_sessions.load(std::memory_order_acquire) != 0 ||
+             stream::session::teardown_sessions.load(std::memory_order_acquire) != 0 ||
+             webrtc_stream::has_active_or_pending_sessions() ||
+             webrtc_stream::has_capture_active() ||
+             webrtc_stream::has_teardown_in_progress();
+    }
   }  // namespace
 
   struct client_t {
@@ -263,7 +276,6 @@ namespace nvhttp {
       }
     }
 
-    bool has_stream_session_activity();
     bool has_active_or_stopping_stream_session();
 
     http_encoder_capabilities_t advertised_encoder_capabilities_for_http() {
@@ -374,19 +386,6 @@ namespace nvhttp {
       if (cleanup.helper_revert_dispatched) {
         display_helper_integration::stop_watchdog();
       }
-    }
-
-    bool has_stream_session_activity() {
-      // RTSP removes STOPPING sessions from session_count() before stream::session::join()
-      // returns; pending launches/creations reserve the process-wide runtime layer
-      // before either protocol publishes an active session.
-      return rtsp_stream::has_pending_launch_or_startup() ||
-             rtsp_stream::session_count_no_cleanup() > 0 ||
-             stream::session::running_sessions.load(std::memory_order_acquire) != 0 ||
-             stream::session::teardown_sessions.load(std::memory_order_acquire) != 0 ||
-             webrtc_stream::has_active_or_pending_sessions() ||
-             webrtc_stream::has_capture_active() ||
-             webrtc_stream::has_teardown_in_progress();
     }
 
     bool has_active_or_stopping_stream_session() {
