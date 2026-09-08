@@ -143,18 +143,18 @@ namespace config {
       return nvenc::nvenc_two_pass::quarter_resolution;
     }
 
-    nvenc::split_encode_mode split_encode_mode_from_view(const std::string_view &value) {
+    nvenc::split_encode_mode_e split_encode_mode_from_view(const std::string_view &value) {
       if (value == "auto" || value == "driver_decides") {
-        return nvenc::split_encode_mode::auto_mode;
+        return nvenc::split_encode_mode_e::auto_mode;
       }
       if (value == "enabled") {
-        return nvenc::split_encode_mode::enabled;
+        return nvenc::split_encode_mode_e::enabled;
       }
       if (value == "disabled") {
-        return nvenc::split_encode_mode::disabled;
+        return nvenc::split_encode_mode_e::disabled;
       }
       BOOST_LOG(warning) << "config: unknown " << split_encode_key << " value: " << value;
-      return nvenc::split_encode_mode::auto_mode;
+      return nvenc::split_encode_mode_e::auto_mode;
     }
 
   }  // namespace nv
@@ -952,6 +952,7 @@ namespace config {
     true,  // wgc_pacing_smoothing
     "1920x1080x60",  // fallback_mode
     false,  // ignore_encoder_probe_failure
+    false,  // linux_virtual_display
   };
 
   audio_t audio {
@@ -1851,6 +1852,7 @@ namespace config {
       video.adapter_pnp_id.clear();
     }
     string_f(vars, "output_name", video.output_name);
+    bool_f(vars, "linux_virtual_display", video.linux_virtual_display);
 
     const auto virtual_display_mode_it = vars.find("virtual_display_mode");
     const bool virtual_display_mode_specified =
@@ -2598,6 +2600,7 @@ namespace config {
         "av1_mode",
         "capture",
         "encoder",
+        "linux_virtual_display",
 
         // Playnite per-app focus behavior
         "playnite_focus_attempts",

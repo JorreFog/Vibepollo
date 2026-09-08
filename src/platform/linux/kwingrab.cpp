@@ -33,13 +33,26 @@
 // local includes
 #include "cuda.h"
 #include "graphics.h"
+#include "kwin_virtual_display.h"
 #include "pipewire.cpp"
+#include "src/config.h"
 #include "src/platform/common.h"
 #include "src/video.h"
 
 using namespace std::literals;
 
 namespace kwin {
+  /**
+   * @brief Output name that requests a virtual display rather than a physical one.
+   *
+   * Selecting this as the output in the web UI is equivalent to turning on the
+   * linux_virtual_display setting.
+   */
+  constexpr auto virtual_output_sentinel = "virtual"sv;
+
+  /// Name handed to KWin for the output it creates for us.
+  constexpr auto virtual_output_name = "Vibepollo"sv;
+
   /**
    * KWin Wayland ScreenCast permissions
    *
@@ -392,14 +405,7 @@ namespace kwin {
         zkde_screencast_stream_unstable_v1_add_listener(kde_screencast_stream_v1_, &stream_listener, this);
       } else {
         // No screencast protocol found. Output an error based on newly initialized permission file.
-        if (screencast_permission_helper_t::is_newly_initialized()) {
-          BOOST_LOG(error) << "[kwingrab] zkde_screencast_unstable_v1 not found in registry. "sv
-                              "A new permission desktop file was automatically created but might now have been recognized yet. "sv
-                              "Try restarting Apollo or set KWIN_WAYLAND_NO_PERMISSION_CHECKS=1 to fully disable permission checks."sv;
-        } else {
-          BOOST_LOG(error) << "[kwingrab] zkde_screencast_unstable_v1 not found in registry. Check permission desktop file "sv
-                              "for Apollo or set KWIN_WAYLAND_NO_PERMISSION_CHECKS=1 to fully disable permission checks."sv;
-        }
+        log_missing_screencast_protocol();
         return -1;
       }
 
@@ -431,6 +437,85 @@ namespace kwin {
       return 0;
     }
 
+    /**
+     * @brief Ask KWin to create a virtual output and stream it.
+     *
+     * KWin materialises the output, extends the desktop onto it and returns a
+     * PipeWire node carrying its contents, all from the one request, so there
+     * is no separate capture target to pick. The output only lives as long as
+     * the stream, so closing it in the destructor removes the display again.
+     *
+     * @param name Name KWin should give the output.
+     * @param width Logical width, normally the client's requested resolution.
+     * @param height Logical height.
+     * @param refresh_mhz Desired refresh in mHz, 0 to accept KWin's 60 Hz default.
+     * @return 0 on success, -1 on failure.
+     */
+    int start_virtual(const std::string_view &name, const int width, const int height, const int refresh_mhz) {
+      if (!kde_screencast_v1_) {
+        log_missing_screencast_protocol();
+        return -1;
+      }
+      if (kde_screencast_version_ < 4) {
+        BOOST_LOG(error) << "[kwingrab] KWin offers zkde_screencast_unstable_v1 v"sv << kde_screencast_version_
+                         << " but virtual outputs need v4. Update Plasma to use a virtual display."sv;
+        return -1;
+      }
+
+      const std::string requested_name {name};
+      kde_screencast_stream_v1_ = zkde_screencast_unstable_v1_stream_virtual_output_with_description(
+        kde_screencast_v1_,
+        requested_name.c_str(),
+        "Vibepollo virtual display",
+        width,
+        height,
+        wl_fixed_from_double(1.0),
+        ZKDE_SCREENCAST_UNSTABLE_V1_POINTER_EMBEDDED
+      );
+      zkde_screencast_stream_unstable_v1_add_listener(kde_screencast_stream_v1_, &stream_listener, this);
+
+      if (wait_for_stream() < 0) {
+        return -1;
+      }
+      if (stream_failed) {
+        BOOST_LOG(error) << "[kwingrab] stream_virtual_output failed: "sv << stream_error_msg;
+        return -1;
+      }
+      if (out_node_id == PW_ID_ANY && (out_objectserial & SPA_ID_INVALID) == SPA_ID_INVALID) {
+        BOOST_LOG(error) << "[kwingrab] timeout waiting for created event"sv;
+        return -1;
+      }
+
+      // The matching wl_output global follows the stream, so wait for it before
+      // reading back the geometry the compositor settled on.
+      const auto output_name = vdisplay::kwin_output_name(requested_name);
+      out_params = wait_for_output_named(output_name, 3s);
+      if (!out_params) {
+        BOOST_LOG(error) << "[kwingrab] virtual output "sv << output_name << " never appeared"sv;
+        return -1;
+      }
+
+      // Virtual outputs are built at a fixed 60 Hz, which would cap the stream.
+      if (refresh_mhz > 0 && !vdisplay::apply_custom_mode(wl_display, output_name, width, height, refresh_mhz)) {
+        BOOST_LOG(warning) << "[kwingrab] could not set "sv << width << "x"sv << height << "@"sv
+                           << (refresh_mhz / 1000.0) << "Hz on "sv << output_name
+                           << "; streaming at the output's default mode instead"sv;
+      }
+      // Picking up the post-mode-change geometry.
+      wl_display_roundtrip(wl_display);
+
+      if (out_params->width == 0 || out_params->height == 0) {
+        BOOST_LOG(error) << "[kwingrab] could not determine virtual output dimensions"sv;
+        return -1;
+      }
+
+      BOOST_LOG(info) << "[kwingrab] Screencasting virtual output"sv
+                      << " name "sv << out_params->name
+                      << " position "sv << out_params->pos_x << "x"sv << out_params->pos_y
+                      << " resolution "sv << out_params->width << "x"sv << out_params->height;
+      return 0;
+    }
+
     uint32_t out_node_id = PW_ID_ANY;
     uint64_t out_objectserial = SPA_ID_INVALID;
     std::shared_ptr<output_parameter_t> out_params = nullptr;
@@ -441,6 +526,7 @@ namespace kwin {
     struct wl_registry *wl_registry = nullptr;
     struct kde_output_order_v1 *kde_output_order = nullptr;
     struct zkde_screencast_unstable_v1 *kde_screencast_v1_ = nullptr;
+    uint32_t kde_screencast_version_ = 0;
     struct zkde_screencast_stream_unstable_v1 *kde_screencast_stream_v1_ = nullptr;
     std::map<struct wl_output *, std::shared_ptr<output_parameter_t>> outputs;
     std::vector<std::string> output_order;
@@ -449,6 +535,41 @@ namespace kwin {
     std::string stream_error_msg;
 
     // Misc functions
+    void log_missing_screencast_protocol() const {
+      if (screencast_permission_helper_t::is_newly_initialized()) {
+        BOOST_LOG(error) << "[kwingrab] zkde_screencast_unstable_v1 not found in registry. "sv
+                            "A new permission desktop file was automatically created but might now have been recognized yet. "sv
+                            "Try restarting Apollo or set KWIN_WAYLAND_NO_PERMISSION_CHECKS=1 to fully disable permission checks."sv;
+      } else {
+        BOOST_LOG(error) << "[kwingrab] zkde_screencast_unstable_v1 not found in registry. Check permission desktop file "sv
+                            "for Apollo or set KWIN_WAYLAND_NO_PERMISSION_CHECKS=1 to fully disable permission checks."sv;
+      }
+    }
+
+    std::shared_ptr<output_parameter_t> find_output_named(const std::string_view &name) const {
+      for (const auto &params : outputs | std::views::values) {
+        if (params->name == name) {
+          return params;
+        }
+      }
+      return nullptr;
+    }
+
+    /// Poll the registry until an output with this name shows up.
+    std::shared_ptr<output_parameter_t> wait_for_output_named(const std::string_view &name, const std::chrono::milliseconds timeout) {
+      const auto deadline = std::chrono::steady_clock::now() + timeout;
+      while (true) {
+        wl_display_roundtrip(wl_display);
+        if (auto params = find_output_named(name)) {
+          return params;
+        }
+        if (std::chrono::steady_clock::now() >= deadline) {
+          return nullptr;
+        }
+        std::this_thread::sleep_for(50ms);
+      }
+    }
+
     int wait_for_stream() {
       // Dispatch until we get created/failed, with a 5s timeout
       auto deadline = std::chrono::steady_clock::now() + 5s;
@@ -502,6 +623,7 @@ namespace kwin {
         self->kde_screencast_v1_ = static_cast<struct zkde_screencast_unstable_v1 *>(
           wl_registry_bind(reg, name, &zkde_screencast_unstable_v1_interface, bind_ver)
         );
+        self->kde_screencast_version_ = bind_ver;
         BOOST_LOG(debug) << "[kwingrab] bound zkde_screencast_unstable_v1 version "sv << bind_ver;
       } else if (!std::strcmp(interface, wl_output_interface.name)) {
         // Bind version 4 - we need wl_output name for matching
@@ -642,7 +764,10 @@ namespace kwin {
       if (screencast->init(true) < 0) {
         return -1;
       }
-      if (screencast->start(display_name) < 0) {
+      const int started = use_virtual_display
+                            ? screencast->start_virtual(virtual_output_name, requested_width, requested_height, requested_refresh_mhz)
+                            : screencast->start(display_name);
+      if (started < 0) {
         return -1;
       }
       if (screencast->out_params) {
@@ -663,6 +788,13 @@ namespace kwin {
     }
 
     std::unique_ptr<screencast_t> screencast;
+
+    /// Create a virtual output for this stream instead of capturing a real one.
+    bool use_virtual_display = false;
+    /// Geometry the client asked for, only meaningful for a virtual display.
+    int requested_width = 0;
+    int requested_height = 0;
+    int requested_refresh_mhz = 0;
   };
 }  // namespace kwin
 
@@ -675,6 +807,20 @@ namespace platf {
     }
 
     auto display = std::make_shared<kwin::kwin_t>();
+
+    if (config::video.linux_virtual_display || display_name == kwin::virtual_output_sentinel) {
+      if (config.width > 0 && config.height > 0) {
+        display->use_virtual_display = true;
+        display->requested_width = config.width;
+        display->requested_height = config.height;
+        // framerateX100 carries rates like 59.94 that plain framerate rounds off.
+        display->requested_refresh_mhz = config.framerateX100 > 0 ? config.framerateX100 * 10 : config.framerate * 1000;
+      } else {
+        BOOST_LOG(warning) << "[kwingrab] virtual display requested without a client resolution; "sv
+                              "capturing a physical output instead"sv;
+      }
+    }
+
     if (display->init(hwdevice_type, display_name, config)) {
       return nullptr;
     }
@@ -695,7 +841,10 @@ namespace platf {
     if (screencast->init() < 0) {
       return {};
     }
-    return screencast->get_output_names();
+    auto display_names = screencast->get_output_names();
+    // Offer the virtual display as a selectable output in the web UI.
+    display_names.emplace_back(kwin::virtual_output_sentinel);
+    return display_names;
   }
 
   bool kwin_available() {

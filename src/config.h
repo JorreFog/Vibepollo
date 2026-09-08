@@ -244,6 +244,10 @@ namespace config {
     bool wgc_pacing_smoothing;  ///< Smooth WGC delivered frame cadence under low-latency (Reflex) source caps by snapping the pacing-group re-anchor back onto the prior grid instead of the jittery arrival phase. Disable for byte-for-byte legacy pacing.
     std::string fallback_mode;
     bool ignore_encoder_probe_failure;
+
+    /// Create a virtual display for the stream instead of capturing a physical
+    /// output. Linux/KWin only; see docs/linux_virtual_display.md.
+    bool linux_virtual_display;
   };
 
   struct audio_t {
