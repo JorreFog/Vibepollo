@@ -1104,6 +1104,33 @@ editing the `conf` file in a text editor. Use the examples as reference.
     </tr>
 </table>
 
+### linux_virtual_display
+
+<table>
+    <tr>
+        <td>Description</td>
+        <td colspan="2">
+            Create a virtual display sized to the client's request instead of capturing a
+            physical output, and remove it again when the stream ends.
+            @note{Linux only, and only on a KDE Plasma Wayland session, where KWin can
+            create outputs at runtime. Selecting `virtual` as the output name has the
+            same effect.}
+        </td>
+    </tr>
+    <tr>
+        <td>Default</td>
+        <td colspan="2">@code{}
+            disabled
+            @endcode</td>
+    </tr>
+    <tr>
+        <td>Example</td>
+        <td colspan="2">@code{}
+            linux_virtual_display = enabled
+            @endcode</td>
+    </tr>
+</table>
+
 ### virtual_display_mode
 
 <table>
