@@ -45,6 +45,9 @@ extern "C" {
 #include "network.h"
 #include "nvhttp.h"
 #include "platform/common.h"
+#ifdef __linux__
+  #include "platform/linux/frame_limiter.h"
+#endif
 #include "process.h"
 #include "rtsp.h"
 #include "session_history.h"
@@ -2996,6 +2999,7 @@ namespace stream {
           is_paused || shared_runtime_still_owned
         );
 #else
+        platf::frame_limiter_clear_runtime();
         const session::shared_runtime_finalize_context_t finalize_context {
           .ignore_current_rtsp_teardown = true,
           .apply_deferred_config = false,
@@ -3155,6 +3159,15 @@ namespace stream {
           session::start_shared_platform_if_needed();
         }
 #else
+        {
+          // Only the fields the limiter reads: everything else in the policy
+          // describes Windows frame-generation behaviour.
+          framegen::stream_start_policy_t limiter_policy;
+          limiter_policy.fps = session.stream_fps;
+          limiter_policy.fps_scaled = session.stream_fps_scaled;
+          limiter_policy.frame_limit_millihz = session.client_display_refresh_millihz;
+          platf::frame_limiter_apply_runtime(limiter_policy);
+        }
         session::start_shared_platform_if_needed();
 #endif
         proc::proc.resume();

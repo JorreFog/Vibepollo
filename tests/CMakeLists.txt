@@ -348,17 +348,31 @@ sunshine_register_component(NAME test_component_http_auth TEST_SOURCE unit/test_
         "${SUNSHINE_TEST_REPOSITORY_ROOT}/src/http_auth_policy.cpp"
         "${SUNSHINE_TEST_REPOSITORY_ROOT}/src/http_auth_request_policy.cpp"
         "${SUNSHINE_TEST_REPOSITORY_ROOT}/src/config_http_policy.cpp"
-    LINK_LIBRARIES GTest::gmock sunshine_test_simple_web_headers ws2_32)
+    LINK_LIBRARIES GTest::gmock sunshine_test_simple_web_headers $<$<BOOL:${WIN32}>:ws2_32>)
 sunshine_register_component(NAME test_component_http_policy TEST_SOURCE unit/test_httpcommon.cpp
     PRODUCT_SOURCES "${SUNSHINE_TEST_REPOSITORY_ROOT}/src/http_policy.cpp")
 sunshine_register_component(NAME test_component_network_policy TEST_SOURCE unit/test_network.cpp
     PRODUCT_SOURCES "${SUNSHINE_TEST_REPOSITORY_ROOT}/src/network_policy.cpp"
-    LINK_LIBRARIES ws2_32)
+    LINK_LIBRARIES $<$<BOOL:${WIN32}>:ws2_32>)
 sunshine_register_component(NAME test_component_input_validation TEST_SOURCE unit/test_input.cpp
     PRODUCT_SOURCES "${SUNSHINE_TEST_REPOSITORY_ROOT}/src/input_validation_policy.cpp"
     LINK_LIBRARIES sunshine_test_moonlight_headers)
 sunshine_register_component(NAME test_component_display_device_policy TEST_SOURCE unit/test_display_device.cpp
     PRODUCT_SOURCES "${SUNSHINE_TEST_REPOSITORY_ROOT}/src/display_device_policy.cpp")
+sunshine_register_component(NAME test_component_frame_limiter_policy TEST_SOURCE unit/test_frame_limiter_policy.cpp
+    PRODUCT_SOURCES "${SUNSHINE_TEST_REPOSITORY_ROOT}/src/frame_limiter_policy.cpp")
+if(UNIX AND NOT APPLE)
+    sunshine_register_component(NAME test_component_frame_limiter_detect TEST_SOURCE unit/test_frame_limiter_detect.cpp
+        PRODUCT_SOURCES
+            "${SUNSHINE_TEST_REPOSITORY_ROOT}/src/frame_limiter_policy.cpp"
+            "${SUNSHINE_TEST_REPOSITORY_ROOT}/src/platform/linux/frame_limiter_detect.cpp")
+    if(X11_FOUND)
+        sunshine_register_component(NAME test_component_frame_limiter_gamescope TEST_SOURCE unit/test_frame_limiter_gamescope.cpp
+            PRODUCT_SOURCES "${SUNSHINE_TEST_REPOSITORY_ROOT}/src/platform/linux/frame_limiter_gamescope.cpp"
+            DEFINITIONS SUNSHINE_BUILD_X11
+            LINK_LIBRARIES ${X11_LIBRARIES})
+    endif()
+endif()
 sunshine_register_component(NAME test_component_process_policy TEST_SOURCE unit/test_process.cpp
     PRODUCT_SOURCES "${SUNSHINE_TEST_REPOSITORY_ROOT}/src/app_catalog_policy.cpp")
 sunshine_register_component(NAME test_component_process_framegen_json TEST_SOURCE unit/test_process_framegen_json.cpp
@@ -383,7 +397,7 @@ sunshine_register_component(NAME test_component_entry_metadata TEST_SOURCE unit/
     PRODUCT_SOURCES "${SUNSHINE_TEST_REPOSITORY_ROOT}/src/entry_metadata.cpp")
 sunshine_register_component(NAME test_component_config_http_policy TEST_SOURCE unit/test_config_http_policy.cpp
     PRODUCT_SOURCES "${SUNSHINE_TEST_REPOSITORY_ROOT}/src/config_http_policy.cpp"
-    LINK_LIBRARIES ws2_32)
+    LINK_LIBRARIES $<$<BOOL:${WIN32}>:ws2_32>)
 sunshine_register_component(NAME test_component_http_pairing_policy TEST_SOURCE unit/test_http_pairing.cpp
     PRODUCT_SOURCES "${SUNSHINE_TEST_REPOSITORY_ROOT}/src/http_pairing_policy.cpp")
 sunshine_register_component(NAME test_component_video_policy TEST_SOURCE unit/test_video.cpp

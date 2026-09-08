@@ -50,6 +50,9 @@
 #include "file_handler.h"
 #include "logging.h"
 #include "platform/common.h"
+#ifdef __linux__
+  #include "platform/linux/frame_limiter.h"
+#endif
 #ifdef _WIN32
   #include "display_helper_integration.h"
   #include "config_playnite.h"
@@ -1766,6 +1769,22 @@ namespace proc {
           config::frame_limiter.fixed_virtual_display_refresh_multiplier()
         );
         platf::frame_limiter_prepare_launch(warmup_policy);
+      }
+#endif
+
+#ifdef __linux__
+      if (config::frame_limiter.enable) {
+        const auto limiter_policy = rtsp_stream::make_framegen_stream_start_policy(
+          *launch_session,
+          std::nullopt,
+          config::video.capture,
+          false,  // WGC is Windows-only
+          config::frame_limiter.virtual_display_limiter_enabled(),
+          config::frame_limiter.fixed_virtual_display_refresh_multiplier()
+        );
+        for (const auto &variable : platf::frame_limiter_launch_env(limiter_policy, _env["LD_PRELOAD"].to_string())) {
+          _env[variable.name] = variable.value;
+        }
       }
 #endif
 

@@ -368,7 +368,13 @@ list(APPEND PLATFORM_TARGET_FILES
         "${CMAKE_SOURCE_DIR}/src/platform/linux/misc.h"
         "${CMAKE_SOURCE_DIR}/src/platform/linux/misc.cpp"
         "${CMAKE_SOURCE_DIR}/src/platform/linux/host_stats.cpp"
-        "${CMAKE_SOURCE_DIR}/src/platform/linux/audio.cpp")
+        "${CMAKE_SOURCE_DIR}/src/platform/linux/audio.cpp"
+        "${CMAKE_SOURCE_DIR}/src/platform/linux/frame_limiter_detect.h"
+        "${CMAKE_SOURCE_DIR}/src/platform/linux/frame_limiter_detect.cpp"
+        "${CMAKE_SOURCE_DIR}/src/platform/linux/frame_limiter_gamescope.h"
+        "${CMAKE_SOURCE_DIR}/src/platform/linux/frame_limiter_gamescope.cpp"
+        "${CMAKE_SOURCE_DIR}/src/platform/linux/frame_limiter.h"
+        "${CMAKE_SOURCE_DIR}/src/platform/linux/frame_limiter.cpp")
 
 # glad is generated into the build tree by glad_add_library (see
 # cmake/dependencies/glad.cmake) and consumed through the "glad" interface
