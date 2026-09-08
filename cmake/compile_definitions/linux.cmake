@@ -277,8 +277,13 @@ if(PIPEWIRE_FOUND AND WAYLAND_FOUND AND ${SUNSHINE_ENABLE_KWIN})
     add_compile_definitions(SUNSHINE_BUILD_KWIN)
     GEN_WAYLAND("${CMAKE_SOURCE_DIR}/third-party/plasma-wayland-protocols/src/protocols" "" kde-output-order-v1)
     GEN_WAYLAND("${CMAKE_SOURCE_DIR}/third-party/plasma-wayland-protocols/src/protocols" "" zkde-screencast-unstable-v1)
+    # Needed to give virtual outputs a mode faster than KWin's built-in 60 Hz.
+    GEN_WAYLAND("${CMAKE_SOURCE_DIR}/third-party/plasma-wayland-protocols/src/protocols" "" kde-output-device-v2)
+    GEN_WAYLAND("${CMAKE_SOURCE_DIR}/third-party/plasma-wayland-protocols/src/protocols" "" kde-output-management-v2)
     list(APPEND PLATFORM_TARGET_FILES
-            "${CMAKE_SOURCE_DIR}/src/platform/linux/kwingrab.cpp")
+            "${CMAKE_SOURCE_DIR}/src/platform/linux/kwingrab.cpp"
+            "${CMAKE_SOURCE_DIR}/src/platform/linux/kwin_virtual_display.h"
+            "${CMAKE_SOURCE_DIR}/src/platform/linux/kwin_virtual_display.cpp")
 elseif(${SUNSHINE_ENABLE_KWIN} AND NOT WAYLAND_FOUND)
     message(FATAL_ERROR "SUNSHINE_ENABLE_KWIN requires SUNSHINE_ENABLE_WAYLAND — KWin capture disabled")
 endif()
@@ -363,13 +368,12 @@ list(APPEND PLATFORM_TARGET_FILES
         "${CMAKE_SOURCE_DIR}/src/platform/linux/misc.h"
         "${CMAKE_SOURCE_DIR}/src/platform/linux/misc.cpp"
         "${CMAKE_SOURCE_DIR}/src/platform/linux/host_stats.cpp"
-        "${CMAKE_SOURCE_DIR}/src/platform/linux/audio.cpp"
-        "${CMAKE_SOURCE_DIR}/third-party/glad/src/egl.c"
-        "${CMAKE_SOURCE_DIR}/third-party/glad/src/gl.c"
-        "${CMAKE_SOURCE_DIR}/third-party/glad/include/EGL/eglplatform.h"
-        "${CMAKE_SOURCE_DIR}/third-party/glad/include/KHR/khrplatform.h"
-        "${CMAKE_SOURCE_DIR}/third-party/glad/include/glad/gl.h"
-        "${CMAKE_SOURCE_DIR}/third-party/glad/include/glad/egl.h")
+        "${CMAKE_SOURCE_DIR}/src/platform/linux/audio.cpp")
+
+# glad is generated into the build tree by glad_add_library (see
+# cmake/dependencies/glad.cmake) and consumed through the "glad" interface
+# target below. The pre-glad2 layout used to ship checked-in sources under
+# third-party/glad/src, which no longer exist.
 
 list(APPEND PLATFORM_LIBRARIES
         dl
