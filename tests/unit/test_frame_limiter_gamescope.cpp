@@ -10,6 +10,7 @@
 #include <src/platform/linux/frame_limiter_gamescope.h>
 
 #include <cstdlib>
+#include <optional>
 
 #include <X11/Xatom.h>
 #include <X11/Xlib.h>
@@ -84,6 +85,18 @@ namespace {
     EXPECT_FALSE(gamescope::present());
     publish(0);
     EXPECT_TRUE(gamescope::present());
+  }
+
+  TEST_F(FrameLimiterGamescope, WritingNeverCreatesThePropertyItself) {
+    // XChangeProperty creates a missing property, so writing through a merely
+    // interned atom used to publish it on a desktop with no gamescope - after
+    // which detection saw a published property and reported gamescope forever.
+    // The limiter poisoned its own detection this way on a real KDE session.
+    unpublish();
+    EXPECT_FALSE(gamescope::set_fps_limit(120));
+    EXPECT_FALSE(gamescope::present()) << "set_fps_limit() published the property";
+    EXPECT_EQ(gamescope::get_fps_limit(), std::nullopt);
+    publish(0);
   }
 
   TEST_F(FrameLimiterGamescope, WrittenLimitReadsBack) {

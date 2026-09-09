@@ -38,9 +38,41 @@ namespace platf::gamescope {
         return handle_;
       }
 
-      /// The property, or None when this display is not gamescope's.
+      /// The interned atom name, or None if nothing ever named it on this server.
       Atom existing_property() const {
         return XInternAtom(handle_, fps_limit_property, True);
+      }
+
+      /**
+       * @brief The property, but only when it is actually published on the root window.
+       *
+       * Interning proves nothing: atom names are global to the X server and outlive
+       * whoever created them, so a name is still resolvable long after the client
+       * that mentioned it is gone. Only gamescope publishes the property itself.
+       */
+      Atom published_property() const {
+        const Atom property = existing_property();
+        if (property == None) {
+          return None;
+        }
+
+        Atom actual_type = None;
+        int actual_format = 0;
+        unsigned long items = 0;
+        unsigned long bytes_after = 0;
+        unsigned char *data = nullptr;
+
+        if (XGetWindowProperty(
+              handle_, DefaultRootWindow(handle_), property, 0, 1, False, XA_CARDINAL,
+              &actual_type, &actual_format, &items, &bytes_after, &data
+            ) != Success) {
+          return None;
+        }
+        const bool published = data && items >= 1 && actual_format == 32;
+        if (data) {
+          XFree(data);
+        }
+        return published ? property : None;
       }
 
     private:
@@ -66,7 +98,12 @@ namespace platf::gamescope {
     if (!display) {
       return false;
     }
-    const Atom property = display.existing_property();
+    // Deliberately not existing_property(): XChangeProperty *creates* the property
+    // if it is missing, so writing through a merely-interned atom publishes it on a
+    // desktop that has no gamescope at all - and every later detection then sees a
+    // published property and believes gamescope is running. The limiter poisoned its
+    // own detection that way. gamescope owns this property; only ever modify it.
+    const Atom property = display.published_property();
     if (property == None) {
       return false;
     }
@@ -91,7 +128,7 @@ namespace platf::gamescope {
     if (!display) {
       return std::nullopt;
     }
-    const Atom property = display.existing_property();
+    const Atom property = display.published_property();
     if (property == None) {
       return std::nullopt;
     }
