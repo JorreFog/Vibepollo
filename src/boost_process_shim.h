@@ -221,31 +221,38 @@ namespace boost_process_shim {
       return _entries.cend();
     }
 
-    process_environment_t to_process_environment() const {
-      if constexpr (std::is_same_v<Char, wchar_t>) {
-        std::vector<std::wstring> env_buffer;
-        env_buffer.reserve(_entries.size());
-        for (const auto &entry : _entries) {
-          env_buffer.push_back(entry.get_name() + L"=" + entry.to_string());
-        }
-        return process_environment_t(env_buffer);
-      } else {
-#ifdef _WIN32
-        std::vector<std::wstring> env_buffer;
-        env_buffer.reserve(_entries.size());
-        for (const auto &entry : _entries) {
-          env_buffer.push_back(detail::from_utf8(entry.get_name()) + L"=" + detail::from_utf8(entry.to_string()));
-        }
-        return process_environment_t(env_buffer);
+    /**
+     * @brief The environment as owned "NAME=VALUE" strings.
+     *
+     * Deliberately not returning a ready-made process_environment. On POSIX,
+     * boost::process::v2::process_environment picks a build_env() overload based
+     * on its argument: when the elements convert to cstring_ref - std::string
+     * does - it stores bare c_str() pointers and never copies them into its own
+     * env_buffer. Constructing it from a local vector therefore hands the child
+     * an environment of dangling pointers, and which variables survive depends
+     * on what reuses the freed memory. Callers must keep these strings alive for
+     * as long as the process_environment built from them.
+     */
+#if defined(_WIN32)
+    using environment_string_t = std::wstring;
 #else
-        std::vector<std::string> env_buffer;
-        env_buffer.reserve(_entries.size());
-        for (const auto &entry : _entries) {
+    using environment_string_t = std::basic_string<Char>;
+#endif
+
+    std::vector<environment_string_t> to_environment_strings() const {
+      std::vector<environment_string_t> env_buffer;
+      env_buffer.reserve(_entries.size());
+      for (const auto &entry : _entries) {
+        if constexpr (std::is_same_v<Char, wchar_t>) {
+          env_buffer.push_back(entry.get_name() + L"=" + entry.to_string());
+        } else if constexpr (std::is_same_v<environment_string_t, std::wstring>) {
+          // Windows with a narrow environment: the original conversion.
+          env_buffer.push_back(detail::from_utf8(entry.get_name()) + L"=" + detail::from_utf8(entry.to_string()));
+        } else {
           env_buffer.push_back(entry.get_name() + "=" + entry.to_string());
         }
-        return v2::process_environment(env_buffer);
-#endif
       }
+      return env_buffer;
     }
 
   private:
