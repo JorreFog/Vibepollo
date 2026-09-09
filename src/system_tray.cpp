@@ -64,6 +64,7 @@ using namespace std::literals;
 // system_tray namespace
 namespace system_tray {
   static std::atomic<bool> tray_initialized = false;
+  static std::atomic<bool> tray_exited = false;
   static std::atomic<bool> tray_thread_running = false;
   static std::atomic<bool> tray_thread_should_exit = false;
   static std::thread tray_thread;
@@ -75,6 +76,24 @@ namespace system_tray {
 #endif
 
   static int init_tray();
+
+  /**
+   * @brief Call tray_exit() at most once per tray lifetime.
+   *
+   * tray_exit() queues tray_exit_internal() onto the GLib main context, which
+   * closes and unrefs the current notification and then calls notify_uninit().
+   * The vendored tray library never nulls its notification pointer afterwards,
+   * so a second pass runs NOTIFY_IS_NOTIFICATION() over freed memory and
+   * segfaults. A normal shutdown reaches tray_exit() twice: end_tray() calls it
+   * to break the loop, and the tray thread calls it again on the way out. Let
+   * exactly one of them through; init_tray() re-arms the guard.
+   */
+  static void tray_exit_once() {
+    if (!tray_exited.exchange(true)) {
+      tray_exit();
+    }
+  }
+
 
   static void tray_log_bridge(enum tray_log_level level, const char *message) {
     if (!message) {
@@ -322,6 +341,7 @@ namespace system_tray {
 
     BOOST_LOG(info) << "System tray created"sv;
     tray_initialized = true;
+    tray_exited = false;
     return 0;
   }
 
@@ -343,14 +363,14 @@ namespace system_tray {
       });
     }
 
-    tray_exit();
+    tray_exit_once();
     clear_pending_quit_messages();
 #else
     while (tray_loop(1) == 0) {
       BOOST_LOG(debug) << "System tray loop"sv;
     }
 
-    tray_exit();
+    tray_exit_once();
 #endif
 
     tray_initialized = false;
@@ -387,7 +407,7 @@ namespace system_tray {
     tray_action_cv.notify_one();
 #else
     if (tray_thread.joinable()) {
-      tray_exit();
+      tray_exit_once();
     }
 #endif
     if (tray_thread.joinable()) {
@@ -643,7 +663,7 @@ namespace system_tray {
     }
 
     // Cleanup
-    tray_exit();
+    tray_exit_once();
     tray_initialized = false;
     tray_thread_running = false;
     BOOST_LOG(info) << "System tray thread ended"sv;
