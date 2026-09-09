@@ -91,7 +91,17 @@ namespace platf::frame_limiter_detect {
   ) {
     frame_limiter::availability_t available;
 
-    available.mangohud_library = find_library(library_directories, "libMangoHud.so", "mangohud");
+    // MangoHud 0.8 moved the OpenGL hook out of libMangoHud.so into
+    // libMangoHud_opengl.so and made libMangoHud_shim.so the entry point that
+    // dispatches to whichever backend the process actually uses. That shim is
+    // what MangoHud's own wrapper preloads. Preloading libMangoHud.so on those
+    // versions silently does nothing for OpenGL titles - the process starts,
+    // MangoHud never attaches, and no limit is applied. Prefer the shim and keep
+    // the old name as a fallback for pre-0.8 installs.
+    available.mangohud_library = find_library(library_directories, "libMangoHud_shim.so", "mangohud");
+    if (available.mangohud_library.empty()) {
+      available.mangohud_library = find_library(library_directories, "libMangoHud.so", "mangohud");
+    }
     available.libstrangle_library = find_library(library_directories, "libstrangle.so", "strangle");
 
     // A Vulkan-only install still limits Vulkan games through MANGOHUD=1.

@@ -1,9 +1,9 @@
 /**
  * @file tests/unit/test_frame_limiter_gamescope.cpp
  *
- * Exercised against a bare X server (Xvfb is enough). The test interns
- * GAMESCOPE_FPS_LIMIT itself, which is what gamescope does on startup, then
- * checks the property really carries the values written to it.
+ * Exercised against a bare X server (Xvfb is enough). The test publishes
+ * GAMESCOPE_FPS_LIMIT on the root window itself, which is what gamescope does
+ * on startup, then checks the property really carries the values written to it.
  */
 #include <gtest/gtest.h>
 
@@ -11,6 +11,7 @@
 
 #include <cstdlib>
 
+#include <X11/Xatom.h>
 #include <X11/Xlib.h>
 
 namespace {
@@ -27,22 +28,61 @@ namespace {
       if (!display_) {
         GTEST_SKIP() << "could not open the X display";
       }
-      // Stand in for gamescope: interning the atom is what makes a display
-      // identifiable as gamescope's.
-      XInternAtom(display_, gamescope::fps_limit_property, False);
-      XSync(display_, False);
+      // Stand in for gamescope, which publishes the property on its root
+      // window. Interning the atom alone is deliberately not enough: atom
+      // names are global and permanent for the server's lifetime, so that
+      // would also be true on any display where the name was ever mentioned.
+      property_ = XInternAtom(display_, gamescope::fps_limit_property, False);
+      publish(0);
     }
 
     void TearDown() override {
       if (display_) {
+        // Leave no property behind: these tests run against whatever DISPLAY
+        // is set, and a leftover property would make the next run - and any
+        // other detection on this machine - believe gamescope is present.
+        unpublish();
         XCloseDisplay(display_);
       }
     }
+
+    void publish(const unsigned long value) const {
+      XChangeProperty(
+        display_,
+        DefaultRootWindow(display_),
+        property_,
+        XA_CARDINAL,
+        32,
+        PropModeReplace,
+        reinterpret_cast<const unsigned char *>(&value),
+        1
+      );
+      XSync(display_, False);
+    }
+
+    void unpublish() const {
+      XDeleteProperty(display_, DefaultRootWindow(display_), property_);
+      XSync(display_, False);
+    }
+
+    Atom property_ = None;
 
     Display *display_ = nullptr;
   };
 
   TEST_F(FrameLimiterGamescope, DisplayWithThePropertyIsRecognised) {
+    EXPECT_TRUE(gamescope::present());
+  }
+
+  TEST_F(FrameLimiterGamescope, AnInternedAtomWithoutAPropertyIsNotGamescope) {
+    // The regression this guards: X atom names are global to the server and
+    // never go away, so any client that once named GAMESCOPE_FPS_LIMIT used to
+    // make every later detection report gamescope. On a plain desktop that
+    // selected a provider nothing honours - the limit was written, success was
+    // logged, and the frame rate was never capped.
+    unpublish();
+    EXPECT_FALSE(gamescope::present());
+    publish(0);
     EXPECT_TRUE(gamescope::present());
   }
 

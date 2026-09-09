@@ -75,6 +75,24 @@ namespace {
     EXPECT_EQ(available.mangohud_library, (lib_dir() / "libMangoHud.so").string());
   }
 
+  TEST_F(FrameLimiterDetect, PrefersTheShimOverTheLegacyLibrary) {
+    // MangoHud >= 0.8 ships both. Only the shim hooks OpenGL; preloading
+    // libMangoHud.so there attaches nothing and silently applies no limit.
+    touch(lib_dir() / "mangohud" / "libMangoHud.so");
+    touch(lib_dir() / "mangohud" / "libMangoHud_shim.so");
+    const auto available = probe();
+    EXPECT_TRUE(available.mangohud);
+    EXPECT_EQ(available.mangohud_library, (lib_dir() / "mangohud" / "libMangoHud_shim.so").string());
+  }
+
+  TEST_F(FrameLimiterDetect, FallsBackToTheLegacyLibraryWhenNoShimExists) {
+    // Pre-0.8 installs only ship libMangoHud.so, which does hook OpenGL.
+    touch(lib_dir() / "mangohud" / "libMangoHud.so");
+    const auto available = probe();
+    EXPECT_TRUE(available.mangohud);
+    EXPECT_EQ(available.mangohud_library, (lib_dir() / "mangohud" / "libMangoHud.so").string());
+  }
+
   TEST_F(FrameLimiterDetect, VulkanLayerAloneMakesMangoHudUsable) {
     // Vulkan titles only need MANGOHUD=1, so no library is required.
     touch(layer_dir() / "MangoHud.x86_64.json");

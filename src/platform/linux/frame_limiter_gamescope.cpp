@@ -49,8 +49,16 @@ namespace platf::gamescope {
   }  // namespace
 
   bool present() {
-    const display_t display;
-    return display && display.existing_property() != None;
+    // Interning the atom name is not enough to conclude gamescope is running.
+    // X atom names are global to the server and permanent for its lifetime, so
+    // any client that ever names GAMESCOPE_FPS_LIMIT - a benchmark, an xprop
+    // one-liner, a previous tool - makes XInternAtom(..., True) succeed forever
+    // afterwards. On a plain XWayland session that made the limiter select
+    // gamescope, write the property, report success and cap nothing, which is
+    // exactly the silent wrong-provider substitution this code avoids
+    // elsewhere. Require the property to actually be published on the root
+    // window with a readable CARDINAL value instead.
+    return get_fps_limit().has_value();
   }
 
   bool set_fps_limit(const int fps) {
