@@ -2196,6 +2196,27 @@ namespace proc {
     return 0;
   }
 
+  namespace {
+    /**
+     * @brief Whether the child is still running, without throwing.
+     *
+     * boost::process::v2::process::running() throws a system_error on failure,
+     * and running() below reaps children itself with waitpid(-1, ...) to avoid
+     * zombies. Once a child has been reaped that way the query fails with
+     * ECHILD, so the throwing overload aborted the whole host - through
+     * std::terminate on a stream thread - whenever a launched app exited while
+     * a stream was still up. A process we can no longer wait on is not running.
+     */
+    bool process_is_running(bp::child &process) {
+      if (!process.valid()) {
+        return false;
+      }
+      std::error_code ec;
+      const bool running = process.running(ec);
+      return ec ? false : running;
+    }
+  }  // namespace
+
   int proc_t::running() {
 #ifndef _WIN32
     // On POSIX OSes, we must periodically wait for our children to avoid
@@ -2282,7 +2303,7 @@ namespace proc {
     } else if (_app.wait_all && _process_group && platf::process_group_running((std::uintptr_t) _process_group.native_handle())) {
       // The app is still running if any process in the group is still running
       return _app_id;
-    } else if (_process.running()) {
+    } else if (process_is_running(_process)) {
       // The app is still running only if the initial process launched is still running
       return _app_id;
     } else if (_app.auto_detach && std::chrono::steady_clock::now() - _app_launch_time < 5s) {
@@ -2541,7 +2562,7 @@ namespace proc {
     if (had_active_app && !_app.playnite_id.empty()) {
       bool should_request_playnite_stop = true;
       try {
-        if (_process && !_process.running() && _process.native_exit_code() == 0) {
+        if (_process && !process_is_running(_process) && _process.native_exit_code() == 0) {
           // The launcher already exited cleanly (typically after receiving gameStopped).
           // Avoid sending a redundant stop command that can race into the next launch.
           should_request_playnite_stop = false;
