@@ -148,9 +148,13 @@ namespace {
 int main(int argc, char **argv) {
   const int width = argc > 1 ? std::atoi(argv[1]) : 1920;
   const int height = argc > 2 ? std::atoi(argv[2]) : 1080;
-  const int refresh_hz = argc > 3 ? std::atoi(argv[3]) : 60;
+  // Fractional, because the interesting rates are not whole numbers: a panel
+  // calibrated to 120.064 Hz and a stream at 120.000 beat against each other
+  // once every few seconds, which is visible.
+  const double refresh_hz = argc > 3 ? std::atof(argv[3]) : 60.0;
+  const int refresh_mhz = static_cast<int>(refresh_hz * 1000.0 + 0.5);
 
-  if (width <= 0 || height <= 0 || refresh_hz <= 0) {
+  if (width <= 0 || height <= 0 || refresh_mhz <= 0) {
     std::cerr << "usage: " << argv[0] << " [width] [height] [refresh_hz]\n";
     return 2;
   }
@@ -216,7 +220,7 @@ int main(int argc, char **argv) {
   const auto output_name = kwin::vdisplay::kwin_output_name(name);
   std::cout << "virtual output " << output_name << " created, PipeWire node " << state.node << "\n";
 
-  if (!kwin::vdisplay::apply_custom_mode(display, output_name, width, height, refresh_hz * 1000)) {
+  if (!kwin::vdisplay::apply_custom_mode(display, output_name, width, height, refresh_mhz)) {
     std::cerr << "could not set " << width << "x" << height << "@" << refresh_hz
               << "Hz; the output stays at its default 60 Hz mode\n";
   }

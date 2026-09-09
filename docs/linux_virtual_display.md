@@ -134,6 +134,24 @@ requested resolution and refresh rate, and disappear on Ctrl+C.
 : Plasma is too old. Virtual outputs need the protocol version shipped with
   Plasma 5.25 and later.
 
+**The refresh rate is close to what was asked for, but not exact**
+: KWin does not honour the requested rate literally. `set_custom_modes` takes a
+  rate in mHz, but KWin generates the mode and reports back whatever its own
+  timing math produces. Asking for 120.000 Hz at 1920x1080 yields **119.877 Hz**;
+  the same request at 3840x2160 yields **119.944 Hz**, which is how you can tell
+  the number comes from mode generation and not from the client.
+
+  The reachable rates are coarse. Near 120 Hz at 1080p the generated modes land
+  about 1 Hz apart - measured, 119.877 and then 120.928 - so an arbitrary target
+  such as a panel calibrated to 120.064 Hz cannot be matched. Requests for
+  120.000, 120.030 and 120.064 all produce the same 119.877 mode.
+
+  `refresh_tolerance_mhz` (1000, i.e. 1 Hz) is what makes this invisible in
+  normal use: a generated mode within 1 Hz of the request is accepted as a match.
+  Tightening it does not get you closer to the requested rate, it only turns the
+  silent approximation into a failure - the mode KWin offers genuinely is not the
+  one asked for.
+
 **Display appears but is stuck at 60 Hz**
 : `kde_output_management_v2` is older than version 18, so custom modes cannot be
   generated. The log names the version it found. Streaming still works at 60 fps.
