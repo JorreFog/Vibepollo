@@ -1,132 +1,158 @@
-# Vibepollo
+# Vibepollo on Linux — virtual displays on KDE Plasma Wayland
 
-## What is Vibepollo?
+A Linux port of [Nonary/Vibepollo](https://github.com/Nonary/Vibepollo), forked at
+`8bf0ef7d`. Upstream does not build on Linux; this branch does, adds a virtual
+display that needs no kernel driver, makes the frame limiter actually limit, and
+fixes three crashes in cross-platform code.
 
-Vibepollo is an AI‑enhanced version of Apollo, a popular remote streaming application. It intends to integrate all scripts from myself (Nonary) and more.
+Everything below was measured on real hardware, streaming to a real client.
 
-
-
-## Key Features
-
-* **Display Setting Automation**
-  Vibepollo adds multiple safeguards to prevent dummy plugs or virtual displays from getting “stuck” when you return to your PC. It resolves common Windows 11 **24H2** display issues and restores your layout after hard crashes, shutdowns, or reboots. (The only scenario it can’t restore is during a user logout.) The workflow is simplified to a dropdown—just pick the display you want to stream.
-
-* **Windows Graphics Capture in Service Mode**
-  Running Windows Graphics Capture (WGC) as a service improves performance and stability. It captures the full frame rate of frame‑generated titles, avoids crashes when VRAM is exceeded, and follows Microsoft’s recommended capture method going forward. Vibepollo auto‑switches capture methods on demand, so the login screen and UAC prompts are still captured even when using WGC.
-
-* **Native Virtualized Display**
-  Vibepollo uses its bundled virtual display driver by default and keeps SudoVDA installed as a rollback option. It can capture output from any GPU, including those in hybrid laptops, ensuring the virtual screen connects to the correct GPU when needed. It also provides simple virtual display options, allowing users to choose between a physical or virtual display. On headless setups, it enables automatically to prevent 503 errors and false encoder detections, such as incorrect HEVC support reports.
-
-* **Focused Configuration Interface**
-  Vibepollo includes a responsive, dependency-light browser interface built around the tasks people perform most often: selecting a streaming display, tuning frame pacing, managing games and devices, checking sessions, and recovering the host. Less common controls remain organized by domain instead of competing with everyday setup.
-
-* **Playnite Integration**
-  Deep integration with Playnite (a “launcher of launchers”) automatically syncs your recently played games with configurable expiration rules, per‑category sync, and exclusions. You can also add games manually from a Web UI dropdown; Vibepollo handles artwork, launching, and clean termination—emulators included. The goal is a seamless, GeForce Experience–style library experience—only better.
-
-* **RTSS & NVIDIA Control Panel Integration**
-  Vibepollo can manage RTSS to apply the correct frame limit and disable V‑Sync before streaming, significantly improving frame pacing and smoothness. The applied frame cap matches the client device’s requested FPS.
-
-* **Frame‑Generated Capture Fixes**
-  DLSS/FSR game-provided frame generation requires Vibepollo's virtual screen for reliable capture. The virtual display guarantees composed flip, allowing generated frames to be captured through WGC, and Vibepollo targets 4x virtual refresh for pacing.
-
-* **Lossless Scaling & NVIDIA Smooth Motion**
-  Vibepollo can automatically apply optimal Lossless Scaling settings to generate frames for any application. On RTX 40‑series and newer GPUs, you can optionally enable **NVIDIA Smooth Motion** for better performance and image quality (while Lossless Scaling remains more customizable).
-
-* **API Token Management**
-  Access tokens can be tightly scoped—down to specific methods—so external scripts don’t need full administrative rights. This improves security while keeping automation flexible.
-
-* **Session‑Based Authentication**
-  The sign‑in flow supports password managers and includes a “remember me” option to minimize prompts. The experience is security‑hardened without sacrificing convenience.
-
-* **Update Notifications**
-  Built‑in notifications let you know when new features or bug fixes are available, making it easy to stay current.
-
-Due to the sheer pace and volume of changes I was producing, it became impractical to manage them within the original Sunshine repository. The review process simply couldn’t keep up with the rate of development, and large feature sets were piling up without a clear path to integration. To ensure the work remained organized, maintainable, and actively progressing, I established Vibepollo as a standalone fork.
-
-At this point, Vibepollo differs substantially from upstream Sunshine. At that scale, asking upstream maintainers to accept large backports in one sweep is generally not sustainable, which is why Vibepollo continues as a standalone fork.
+**Host:** CachyOS · KDE Plasma 6.7.4 Wayland · NVIDIA RTX 4080 SUPER (driver 610.57.04) · GCC 16.2 · CUDA 13.3
+**Client:** AYN Odin 2 Portal (Snapdragon 8 Gen 2, 1080p120 AMOLED) running Artemis
 
 ---
 
-## Does Vibepollo aim to replace Sunshine or Apollo?
+## The headline: no kernel driver, and it comes up in ~185 ms
 
-No. Vibepollo is intended as a **complementary fork**, not a replacement.
+On Windows the virtual display is an **IddCx indirect display driver**: the OS
+enumerates a new monitor, changes display topology, waits for the desktop to
+settle, then applies a mode.
 
+KWin can do the whole thing in one Wayland request.
+`zkde_screencast_unstable_v1::stream_virtual_output_with_description` creates the
+output **and** returns a PipeWire node carrying its contents — so the display is
+its own capture source, and `kwingrab`'s existing PipeWire path consumes it
+unchanged. The output is owned by the stream: close the stream and the display
+disappears, so nothing is left behind if the host dies.
 
-## Will Vibepollo’s features merge back into Sunshine or Apollo?
+Measured, from a real session:
 
-**Short answer: Unlikely to be backported upstream as large, sweeping merges.**
+```
+18:44:09.128  streaming session started
+18:44:09.150  CLIENT CONNECTED                                    (+22 ms)
+18:44:09.236  virtual display created at 1920x1080@119.877 Hz     (+108 ms)
+18:44:09.239  screencasting the virtual output
+18:44:09.313  AV1 encoder created                                 (+185 ms total)
+```
 
-Vibepollo is largely AI‑generated. While it works well, it carries a kind of surface‑level technical debt that many upstream projects want resolved before taking big changes (styling consistency, thin/missing docs, and some over‑engineering). I see that debt as relatively unimportant today because modern AI tools can answer “why does this function exist?”, “what does this parameter do?”, or “how do these classes interact?” and will soon auto‑fix these issues—re‑style trees, write docstrings, and prune unused layers—without human effort.
+Virtual outputs are built at a hard-coded 60 Hz, which would cap the stream, so
+the requested rate is added as a custom mode through `kde_output_management_v2`
+and then selected. Verified at **3840x2160@119.944 Hz**, **2560x1440@119.877 Hz**
+and **1920x1080@119.877 Hz**.
 
-So this “mess” is mostly cosmetic. It doesn’t break the code, create security risks, or block future maintenance. The only debt that truly matters is architectural: API design, threading models, modularity, and performance. Those are hard to fix even with AI tools, which is why I focus on them up front and guide the AI accordingly.
+## Streaming performance
 
-Because I define the architecture, I know how everything works. Whether the code looks polished or not doesn’t matter to me.
+1080p120, AV1 (NVENC) into the Odin's `c2.qti.av1.decoder.low_latency`:
 
-Bringing Vibepollo fully in line with upstream style and documentation would take a lot of engineering time for limited practical gain. For now, full backports into Sunshine or Apollo are unlikely. Over time, targeted refactors or added documentation may make **selective upstreaming** possible.
+| Metric | Value |
+| --- | --- |
+| Video encode call duration | **1.30 / 6.43 / 1.74 ms** (min/max/avg) |
+| Frame network latency | **0.02 / 0.17 / 0.05 ms** (min/max/avg) |
+| Dropped submissions | **0** |
+| Effective encode bitrate | 63.4 Mbps |
 
----
+Encoders found: **H.264, HEVC and AV1**, all NVENC.
 
-## Origin of the Name "Vibepollo"
+## The frame limiter now limits
 
-The name arose as a playful suggestion from another developer who joked about the potential unmanageability of extensive AI‑generated code. Given that approximately **99% of Vibepollo’s code is AI‑generated**, the name seemed fitting.
+It previously applied no cap at all, while logging success. Measured with
+`tools/frametime_probe.c`, which times its own buffer swaps:
 
----
+| | fps | frametime | stdev | p99 |
+| --- | --- | --- | --- | --- |
+| unlimited | 28743.03 | 0.03 ms | 0.02 ms | 0.10 ms |
+| **limited to 120** | **120.00** | **8.33 ms** | **0.01 ms** | **8.37 ms** |
 
-## Why Use AI‑generated Code? Concerns About Technical Debt?
+Before the fix, `fps_limit=30` left the workload running at **240 fps**. After,
+it holds **29.95 fps** at a limit of 30 and **89.99 fps** at a limit of 90.
 
-AI significantly accelerates development by offloading much of the routine implementation work. Instead of spending hours writing boilerplate, wiring dependencies, or handling repetitive edge cases, I can focus on high‑level architecture, long‑term design decisions, and system direction. This shift doesn’t just speed things up—it fundamentally changes the role of the engineer, pushing us toward oversight, orchestration, and design rather than rote code production.
+## Arrival-based capture pacing
 
-What stands out most is that AI code works on the first try around 90% of the time. That reliability, combined with instant generation, makes it dramatically more efficient to accept its form of debt than to painstakingly write everything from scratch. In other words, I’m trading minor, manageable debt for massive development velocity—and that trade is almost always worth it.
+Poll-based backends grab the screen when they wake, so a fixed grid costs them
+nothing. PipeWire pushes frames on the compositor's schedule, so the grid only
+decides *when we look* — a frame landing just after a grid point sits finished in
+memory until the next one, and at matched rates that phase offset is **constant
+for the whole session**. That is latency, not jitter.
 
-I’m not overly concerned about technical debt in this workflow, because the debt that truly matters stems from bad architecture and poor design choices, not from the code itself. As long as I guide the AI with clear structure and intent, the generated code ends up being maintainable. Problems like inconsistent naming, redundant code, or unused helpers are minor forms of debt—easily identified, cleaned up, or ignored. By contrast, deep architectural flaws, poor layering, or mismatched abstractions create lasting problems.
+Simulated across rate ratios, averaged over random phase offsets. Both metrics
+are shown, because there is a real trade-off:
 
-In fact, compared to many traditional enterprise codebases I’ve maintained, AI‑assisted code often comes out cleaner and easier to manage. Legacy systems are usually burdened with years of ad‑hoc patches, inconsistent styles, and various bad practices due to knowledge level of contributor. AI‑generated code doesn’t necessarily carry fewer design flaws than human code, but it does avoid accumulating those scars—especially when paired with an intentional architectural vision, and it is less likely to do seriously bad practices that you typically find in enterprise codebases.
+| source→target | jitter | grid latency | grid sd | arrival latency | arrival sd |
+| --- | --- | --- | --- | --- | --- |
+| **120→120** | 0.0 ms | **4.24 ms** | 0.00 ms | **0.00 ms** | 0.00 ms |
+| 120→120 | 0.5 ms | 4.18 ms | 1.00 ms | 0.00 ms | 0.47 ms |
+| 120→60 | 0.0 ms | 4.52 ms | 0.00 ms | 0.00 ms | 0.00 ms |
+| 144→60 | 0.0 ms | 3.41 ms | **0.00 ms** | 0.00 ms | **3.40 ms** |
+| 240→120 | 0.0 ms | 2.26 ms | 0.00 ms | 0.00 ms | 0.00 ms |
+| 60→120 | 0.0 ms | 4.24 ms | 0.00 ms | 0.00 ms | 0.00 ms |
 
-Broadly speaking, AI‑assisted development represents the future of software engineering. Just as compilers and IDEs once transformed programming, AI is now transforming how we design, implement, and maintain systems. Instead of fearing it, I view it as a force multiplier that complements professional judgment. Vibepollo is an example of what happens when you embrace that shift: rapid iteration, a massive expansion of features, and code that remains maintainable because the architecture is intentionally guided.
+Arrival pacing removes the latency outright in every case. **144→60 is the
+honest exception**: a non-integer ratio is inherently uneven, and there arrival
+passes the unevenness through as interval spread where the grid stays regular.
+That is why it is a config key (`linux_capture_pacing`) and not a hardcoded
+change. Default is `arrival`.
 
----
+## Bugs fixed
 
-## The Original “AI-Only” Goal (And Why It Changed)
+Each was reproduced before and verified after.
 
-One of the original goals of Vibepollo was to prove a specific point: that an experienced developer could maintain a complex project using almost entirely AI‑generated code, as long as they provided the architecture and kept the system coherent.
+| Bug | Impact |
+| --- | --- |
+| Double `tray_exit()` | SIGSEGV on **3 of 3** shutdowns → exit 0 on 3 of 3 |
+| Uncaught `system_error` in `proc_t::running()` | **Any game quitting mid-stream aborted the host** |
+| `process_environment` lifetime bug | Child processes received an environment built from **freed memory** |
+| MangoHud detection | 0.8 moved the GL hook behind `libMangoHud_shim.so`; OpenGL titles got no limit |
+| `gamescope::present()` | Trusted a *global, permanent* X atom name — reported gamescope on any desktop |
+| Limiter published `GAMESCOPE_FPS_LIMIT` itself | Poisoned its own detection permanently |
+| Limiter env nested in a Windows-only branch | `frame_limiter_launch_env()` was never called on Linux |
+| `VirtualDisplayCapable` hardcoded false | Clients refused to offer virtual-display launches |
 
-That idea hasn’t aged particularly well, not because it was wrong, but because the models scaled far faster than most projections. The result is that the “skill gap” in prompting and guiding the AI matters less than it did even a few months prior. You still need engineering judgment and architecture, but it’s now dramatically easier to get high‑quality, end‑to‑end results without the same level of careful orchestration. So the original “prove it’s possible” goal is basically moot: it’s not a niche workflow anymore, it’s simply where the tools have gone.
+Three of these are in cross-platform code and are offered separately in
+[`upstream-crash-fixes`](../../tree/upstream-crash-fixes).
 
----
+## Also here
 
-## AI Models Used by Vibepollo
+- **`linux_virtual_display_exclusive`** — turn the physical monitors off while
+  streaming and restore them afterwards.
+- **Thread priority actually applies.** RTKit for scheduling (5 threads at
+  nice −15) and `cap_sys_nice` for the high-priority GPU context. Before: 50
+  `CAP_SYS_NICE` warnings and 33 `setpriority` failures per session; after, zero.
+- **`tools/kwin_virtual_display_probe`** — verify a Plasma install supports all of
+  this without building the host.
+- **`docs/examples/`** — a working configuration with the reasoning inline.
 
-Vibepollo has always been built with **Codex** as the primary workflow, and in practice that has meant mostly the **GPT‑5 family** (today: **GPT‑5.3‑Codex**). I use it with the same principles as before: start from architecture, sanity‑check assumptions, and do the hard reasoning up front so the implementation lands cleanly.
+## Tests
 
-With **GPT‑5.3‑Codex**, there’s no real need to juggle a “fast but less capable” model anymore. In the past I’d reach for speed‑first models (like Sonnet, or smaller GPT “mini” variants) for quick turnaround, but **GPT‑5.3‑Codex** covers both: it’s about as fast as those options while also being strong enough to handle the hard engineering work in one pass.
+**38/38 green**, including regression tests for the atom-name bug, the
+self-poisoning write, the environment lifetime contract, and the pacer's
+jitter-tolerance and re-anchor paths.
 
-Claude was used more heavily earlier on. Older Claude models had a tendency to go off on their own path, even when the architectural plan was clear. That behavior has mostly been fixed in newer Claude releases, but GPT still ended up being the more useful engineering tool for me because it will challenge you and not simply agree with whatever you ask for.
+```bash
+cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTS=ON \
+      -DGLAD_SKIP_PIP_INSTALL=ON -DPython_EXECUTABLE=<venv>/bin/python
+cmake --build build -j"$(nproc)"
+ctest --test-dir build --output-on-failure
+```
 
-In general, GPT has felt more intelligent for the way I build and maintain this codebase. I may occasionally ask **Claude Opus 4.5** for a second opinion if GPT can’t resolve something cleanly end‑to‑end, but this is increasingly rare.
+Build notes, dependencies and the traps are in
+[`docs/linux_virtual_display.md`](docs/linux_virtual_display.md) and
+[`HANDOVER.md`](HANDOVER.md).
 
----
+## Requirements
 
-## Sponsors
+- KDE Plasma Wayland with `zkde_screencast_unstable_v1` **v4+** (virtual outputs)
+  and `kde_output_management_v2` **v18+** (custom modes). Verified on v6 and v21.
+- `capture = kwin`. KMS grab is not usable with the NVIDIA proprietary driver.
 
-<p align="center">
-  <a href="https://signpath.io?utm_source=foundation&amp;utm_medium=github&amp;utm_campaign=vibepollo">
-    <img src="docs/images/signpath.svg" alt="SignPath" width="420">
-  </a>
-</p>
+## Honest limitations
 
-Thank you to [SignPath.io](https://signpath.io?utm_source=foundation&utm_medium=github&utm_campaign=vibepollo)
-and the [SignPath Foundation](https://signpath.org?utm_source=foundation&utm_medium=github&utm_campaign=vibepollo)
-for sponsoring Vibepollo's Windows code signing.
-
-### Code signing policy
-
-Official Vibepollo Windows releases use free code signing provided by
-[SignPath.io](https://signpath.io?utm_source=foundation&utm_medium=github&utm_campaign=vibepollo), and a
-certificate by the [SignPath Foundation](https://signpath.org?utm_source=foundation&utm_medium=github&utm_campaign=vibepollo).
-
-* **Committer and reviewer:** [Nonary](https://github.com/Nonary)
-* **Approver:** [Nonary](https://github.com/Nonary)
-* **Privacy:** Vibepollo transfers information to networked systems only for functionality requested by the user or
-  operator; it does not transmit user or runtime data to SignPath. Separately, SignPath's GitHub integration receives
-  the build artifacts, signing-request details, and GitHub-provided build-origin metadata needed to sign official
-  releases.
+- **Windows was not benchmarked.** The ~185 ms figure is measured on Linux; the
+  IddCx comparison is architectural reasoning, not a controlled A/B.
+- **macOS is untouched by testing.** One shared fix updates a macOS call site
+  identically, but it has not been compiled.
+- **`linux_virtual_display_exclusive` cannot restore the monitors if the host is
+  SIGKILLed.** It is off by default. Recovery is
+  `kscreen-doctor output.DP-1.enable ...`.
+- Arrival pacing passes source jitter through; see the 144→60 row above.
+- Capabilities do not survive `cmake --install`, so `setcap` must be re-applied
+  after every install.
