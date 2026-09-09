@@ -60,6 +60,8 @@
   #include "platform/windows/misc.h"
   #include "platform/windows/virtual_display.h"
   #include "platform/windows/virtual_display_cleanup.h"
+#elif defined(SUNSHINE_BUILD_KWIN)
+  #include "platform/linux/kwin_virtual_display.h"
 #endif
 #include "process.h"
 #include "rtsp.h"
@@ -2808,6 +2810,16 @@ namespace nvhttp {
       // paired and unpaired discovery requests.
       tree.put("root.VirtualDisplayCapable", true);
       tree.put("root.VirtualDisplayDriverReady", proc::vDisplayDriverStatus.load(std::memory_order_acquire) == VDISPLAY::DRIVER_STATUS::OK);
+#elif defined(SUNSHINE_BUILD_KWIN)
+      // KWin creates virtual outputs itself, so there is no driver to install or
+      // report on: if the compositor offers the interface the display is ready.
+      // Without this the client is told the server cannot do virtual displays at
+      // all and refuses to offer them, even though the feature works.
+      {
+        const bool kwin_virtual_display = kwin::vdisplay::supported();
+        tree.put("root.VirtualDisplayCapable", kwin_virtual_display);
+        tree.put("root.VirtualDisplayDriverReady", kwin_virtual_display);
+      }
 #else
       tree.put("root.VirtualDisplayCapable", false);
       tree.put("root.VirtualDisplayDriverReady", false);

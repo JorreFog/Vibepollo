@@ -27,6 +27,21 @@ struct wl_display;
 namespace kwin::vdisplay {
 
   /**
+   * @brief Whether this session can create a virtual output at all.
+   *
+   * Virtual outputs come from zkde_screencast_unstable_v1's
+   * stream_virtual_output_with_description, which exists from version 4. A
+   * session without that interface - anything that is not KWin, or a Plasma too
+   * old - cannot make one, and clients that ask about it up front should be told
+   * so rather than be allowed to start a launch that then fails.
+   *
+   * The answer cannot change while the compositor is running, so it is probed
+   * once on first call and cached.
+   */
+  bool supported();
+
+
+  /**
    * @brief Name KWin gives to a virtual output created with the supplied name.
    *
    * KWin prefixes virtual outputs with "Virtual-" (see DrmVirtualOutput), so the

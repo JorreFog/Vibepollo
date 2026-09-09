@@ -27,6 +27,7 @@
 // generated protocol headers
 #include <kde-output-device-v2.h>
 #include <kde-output-management-v2.h>
+#include <zkde-screencast-unstable-v1.h>
 
 // local includes
 #include "kwin_virtual_display.h"
@@ -783,6 +784,53 @@ namespace kwin::vdisplay {
     }
     output_configurator_t configurator {display};
     return configurator.apply_mode(output_name, width, height, refresh_mhz, timeout);
+  }
+
+
+  namespace {
+    /// stream_virtual_output_with_description, and therefore virtual outputs.
+    constexpr uint32_t screencast_virtual_output_version = 4;
+
+    struct screencast_probe_t {
+      uint32_t version = 0;
+
+      static void on_global(void *data, struct wl_registry *, uint32_t, const char *interface, uint32_t version) {
+        if (!std::strcmp(interface, zkde_screencast_unstable_v1_interface.name)) {
+          static_cast<screencast_probe_t *>(data)->version = version;
+        }
+      }
+
+      static void on_global_remove(void *, struct wl_registry *, uint32_t) {}
+
+      static constexpr struct wl_registry_listener listener {
+        .global = on_global,
+        .global_remove = on_global_remove,
+      };
+    };
+
+    bool probe_supported() {
+      // Nothing is bound here: the advertised version is all that is needed, and
+      // binding a restricted interface would fail without the KWin permission
+      // file that only an actual stream needs.
+      struct wl_display *display = wl_display_connect(nullptr);
+      if (!display) {
+        return false;
+      }
+
+      screencast_probe_t probe;
+      struct wl_registry *registry = wl_display_get_registry(display);
+      wl_registry_add_listener(registry, &screencast_probe_t::listener, &probe);
+      wl_display_roundtrip(display);
+
+      wl_registry_destroy(registry);
+      wl_display_disconnect(display);
+      return probe.version >= screencast_virtual_output_version;
+    }
+  }  // namespace
+
+  bool supported() {
+    static const bool available = probe_supported();
+    return available;
   }
 
 }  // namespace kwin::vdisplay
