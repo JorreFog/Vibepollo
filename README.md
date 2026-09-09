@@ -7,6 +7,13 @@ fixes three crashes in cross-platform code.
 
 Everything below was measured on real hardware, streaming to a real client.
 
+> **This repository is a results page, not the review target.** The code for
+> review lives in a proper fork of upstream, on topic branches:
+> [`fix/cross-platform-crashes`](https://github.com/JorreFog/Vibepollo/tree/fix/cross-platform-crashes)
+> (three crashes in cross-platform code, offered on their own) and
+> [`linux/kwin-virtual-display`](https://github.com/JorreFog/Vibepollo/tree/linux/kwin-virtual-display)
+> (the full Linux port). Pull requests come from there.
+
 **Host:** CachyOS · KDE Plasma 6.7.4 Wayland · NVIDIA RTX 4080 SUPER (driver 610.57.04) · GCC 16.2 · CUDA 13.3
 **Client:** AYN Odin 2 Portal (Snapdragon 8 Gen 2, 1080p120 AMOLED) running Artemis
 
@@ -107,8 +114,9 @@ Each was reproduced before and verified after.
 | Limiter env nested in a Windows-only branch | `frame_limiter_launch_env()` was never called on Linux |
 | `VirtualDisplayCapable` hardcoded false | Clients refused to offer virtual-display launches |
 
-Three of these are in cross-platform code and are offered separately in
-[`upstream-crash-fixes`](../../tree/upstream-crash-fixes).
+Three of these are in cross-platform code — reachable on Windows too — and are
+offered separately, independent of any Linux work, in
+[`fix/cross-platform-crashes`](https://github.com/JorreFog/Vibepollo/tree/fix/cross-platform-crashes).
 
 ## Also here
 
