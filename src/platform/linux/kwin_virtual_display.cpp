@@ -134,6 +134,7 @@ namespace kwin::vdisplay {
       struct kde_output_device_mode_v2 *current_mode = nullptr;
       std::vector<mode_info_t *> modes;
       bool removed = false;
+      bool enabled = false;
 
       static void on_name(void *data, struct kde_output_device_v2 *, const char *name) {
         static_cast<device_info_t *>(data)->name = name ? name : "";
@@ -141,6 +142,10 @@ namespace kwin::vdisplay {
 
       static void on_current_mode(void *data, struct kde_output_device_v2 *, struct kde_output_device_mode_v2 *mode) {
         static_cast<device_info_t *>(data)->current_mode = mode;
+      }
+
+      static void on_enabled(void *data, struct kde_output_device_v2 *, int32_t enabled) {
+        static_cast<device_info_t *>(data)->enabled = enabled != 0;
       }
 
       static void on_done(void *, struct kde_output_device_v2 *) {
@@ -383,7 +388,7 @@ namespace kwin::vdisplay {
         .done = on_done,
         .scale = ignore_scale,
         .edid = ignore_edid,
-        .enabled = ignore_enabled,
+        .enabled = on_enabled,
         .uuid = ignore_uuid,
         .serial_number = ignore_serial_number,
         .eisa_id = ignore_eisa_id,
@@ -552,6 +557,61 @@ namespace kwin::vdisplay {
         }
 
         return select_mode(device, width, height, refresh_mhz, timeout);
+      }
+
+      /**
+       * @brief Names of every enabled output except the one to keep.
+       *
+       * Captured before anything is switched off so the same set can be turned
+       * back on afterwards, rather than guessing at restore time.
+       */
+      std::vector<std::string> enabled_outputs_except(const std::string &keep) const {
+        std::vector<std::string> names;
+        for (const auto &device : devices_) {
+          if (device->removed || !device->enabled || device->name.empty() || device->name == keep) {
+            continue;
+          }
+          names.push_back(device->name);
+        }
+        return names;
+      }
+
+      /**
+       * @brief Enable or disable a set of outputs in one transaction.
+       *
+       * One transaction on purpose: applying them separately would leave the
+       * desktop with no enabled output in between, which KWin can refuse.
+       */
+      bool set_outputs_enabled(const std::vector<std::string> &names, bool enable, std::chrono::milliseconds timeout) {
+        if (names.empty()) {
+          return true;
+        }
+        if (!available()) {
+          VD_LOG(error) << "kde_output_management_v2 is missing; cannot enable or disable outputs"sv;
+          return false;
+        }
+
+        bool any = false;
+        const bool applied = run_configuration([&](struct kde_output_configuration_v2 *configuration) {
+          for (const auto &name : names) {
+            if (auto *device = find_device(name); device && !device->removed) {
+              kde_output_configuration_v2_enable(configuration, device->proxy, enable ? 1 : 0);
+              any = true;
+            }
+          }
+        },
+                                               timeout);
+        if (!any) {
+          // Every output named has gone away; nothing to do rather than a failure.
+          return true;
+        }
+        return applied;
+      }
+
+
+      /// Whether KWin knows an output by this name, waiting for it to appear.
+      bool has_output(const std::string &name, std::chrono::milliseconds timeout) {
+        return wait_for_device(name, timeout) != nullptr;
       }
 
     private:
@@ -769,6 +829,44 @@ namespace kwin::vdisplay {
 
   std::string kwin_output_name(const std::string &requested_name) {
     return "Virtual-" + requested_name;
+  }
+
+  std::vector<std::string> disable_other_outputs(
+    struct wl_display *display,
+    const std::string &keep_output_name,
+    const std::chrono::milliseconds timeout
+  ) {
+    if (!display) {
+      return {};
+    }
+    output_configurator_t configurator {display};
+    if (!configurator.has_output(keep_output_name, timeout)) {
+      // Without the output we are keeping there is nothing safe to switch to.
+      VD_LOG(error) << "output "sv << keep_output_name << " never appeared; leaving the other outputs alone"sv;
+      return {};
+    }
+
+    const auto names = configurator.enabled_outputs_except(keep_output_name);
+    if (names.empty()) {
+      return {};
+    }
+    if (!configurator.set_outputs_enabled(names, false, timeout)) {
+      VD_LOG(error) << "KWin refused to disable the other outputs; leaving them on"sv;
+      return {};
+    }
+    return names;
+  }
+
+  bool restore_outputs(
+    struct wl_display *display,
+    const std::vector<std::string> &output_names,
+    const std::chrono::milliseconds timeout
+  ) {
+    if (!display || output_names.empty()) {
+      return true;
+    }
+    output_configurator_t configurator {display};
+    return configurator.set_outputs_enabled(output_names, true, timeout);
   }
 
   bool apply_custom_mode(

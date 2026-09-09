@@ -19,6 +19,8 @@
 #include <string>
 #include <string_view>
 #include <thread>
+#include <utility>
+#include <vector>
 
 // lib includes
 #include <pipewire/pipewire.h>
@@ -273,6 +275,11 @@ namespace kwin {
     screencast_t &operator=(screencast_t &&) = delete;  // Do not allow to copying
 
     ~screencast_t() {
+      // Before the stream closes: closing it removes the virtual output, and
+      // re-enabling afterwards would leave a window with no output enabled at
+      // all. Restoring first means there is always somewhere to draw.
+      restore_disabled_outputs();
+
       if (kde_screencast_stream_v1_) {
         zkde_screencast_stream_unstable_v1_close(kde_screencast_stream_v1_);
         kde_screencast_stream_v1_ = nullptr;
@@ -513,8 +520,35 @@ namespace kwin {
                       << " name "sv << out_params->name
                       << " position "sv << out_params->pos_x << "x"sv << out_params->pos_y
                       << " resolution "sv << out_params->width << "x"sv << out_params->height;
+
+      // Only once the virtual output is up and running at its final mode: it has
+      // to be a usable target before anything else is switched off.
+      if (config::video.linux_virtual_display_exclusive) {
+        disabled_outputs_ = vdisplay::disable_other_outputs(wl_display, output_name, 3s);
+        if (!disabled_outputs_.empty()) {
+          BOOST_LOG(info) << "[kwingrab] disabled "sv << disabled_outputs_.size()
+                          << " physical output(s) for the duration of the stream"sv;
+        }
+      }
       return 0;
     }
+
+    /// Put back whatever start_virtual() switched off. Safe to call twice.
+    void restore_disabled_outputs() {
+      if (disabled_outputs_.empty() || !wl_display) {
+        return;
+      }
+      const auto names = std::exchange(disabled_outputs_, {});
+      if (vdisplay::restore_outputs(wl_display, names, 5s)) {
+        BOOST_LOG(info) << "[kwingrab] restored "sv << names.size() << " physical output(s)"sv;
+      } else {
+        BOOST_LOG(error) << "[kwingrab] could not restore "sv << names.size()
+                         << " physical output(s); re-enable them in System Settings > Display"sv;
+      }
+    }
+
+    /// Physical outputs switched off for this stream, to be restored after it.
+    std::vector<std::string> disabled_outputs_;
 
     uint32_t out_node_id = PW_ID_ANY;
     uint64_t out_objectserial = SPA_ID_INVALID;

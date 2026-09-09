@@ -248,6 +248,10 @@ namespace config {
     /// Create a virtual display for the stream instead of capturing a physical
     /// output. Linux/KWin only; see docs/linux_virtual_display.md.
     bool linux_virtual_display;
+
+    /// While a virtual display is streaming, turn the physical outputs off and
+    /// put them back when it ends. Linux/KWin only.
+    bool linux_virtual_display_exclusive;
   };
 
   struct audio_t {

@@ -66,6 +66,37 @@ namespace kwin::vdisplay {
    *                acknowledge the configuration.
    * @return true if the output is running at the requested mode.
    */
+  /**
+   * @brief Turn off every enabled output except one, returning what was turned off.
+   *
+   * Used to make the virtual display the only output for the duration of a
+   * stream, so the desktop does not stay mirrored across physical monitors that
+   * nobody is looking at. The returned names are exactly what
+   * restore_outputs() should be given afterwards - the set is captured before
+   * anything changes rather than reconstructed later.
+   *
+   * @param display Connected Wayland display.
+   * @param keep_output_name The output to leave enabled, as KWin names it.
+   * @param timeout How long to wait for KWin to acknowledge the configuration.
+   * @return The outputs that were disabled; empty if nothing was, which is also
+   *         what is returned on failure - there is then nothing to restore.
+   */
+  [[nodiscard]] std::vector<std::string> disable_other_outputs(
+    struct wl_display *display,
+    const std::string &keep_output_name,
+    std::chrono::milliseconds timeout
+  );
+
+  /**
+   * @brief Re-enable outputs previously turned off by disable_other_outputs().
+   * @return true if KWin accepted the configuration.
+   */
+  bool restore_outputs(
+    struct wl_display *display,
+    const std::vector<std::string> &output_names,
+    std::chrono::milliseconds timeout
+  );
+
   [[nodiscard]] bool apply_custom_mode(
     wl_display *display,
     const std::string &output_name,

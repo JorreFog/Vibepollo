@@ -953,6 +953,7 @@ namespace config {
     "1920x1080x60",  // fallback_mode
     false,  // ignore_encoder_probe_failure
     false,  // linux_virtual_display
+    false,  // linux_virtual_display_exclusive
   };
 
   audio_t audio {
@@ -1853,6 +1854,7 @@ namespace config {
     }
     string_f(vars, "output_name", video.output_name);
     bool_f(vars, "linux_virtual_display", video.linux_virtual_display);
+    bool_f(vars, "linux_virtual_display_exclusive", video.linux_virtual_display_exclusive);
 
     const auto virtual_display_mode_it = vars.find("virtual_display_mode");
     const bool virtual_display_mode_specified =
@@ -2601,6 +2603,7 @@ namespace config {
         "capture",
         "encoder",
         "linux_virtual_display",
+        "linux_virtual_display_exclusive",
 
         // Playnite per-app focus behavior
         "playnite_focus_attempts",

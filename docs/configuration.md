@@ -1131,6 +1131,36 @@ editing the `conf` file in a text editor. Use the examples as reference.
     </tr>
 </table>
 
+### linux_virtual_display_exclusive
+
+<table>
+    <tr>
+        <td>Description</td>
+        <td colspan="2">
+            While a virtual display is streaming, turn the physical outputs off, and turn
+            them back on when the stream ends. Without this the desktop stays spread across
+            monitors nobody is looking at.
+            @note{Linux only, and only on a KDE Plasma Wayland session. Has no effect unless
+            <a href="#linux_virtual_display">linux_virtual_display</a> is in use.}
+            @warning{The outputs are restored when the stream ends, including when Vibepollo
+            shuts down normally. If it is killed outright they stay off; re-enable them in
+            System Settings > Display.}
+        </td>
+    </tr>
+    <tr>
+        <td>Default</td>
+        <td colspan="2">@code{}
+            disabled
+            @endcode</td>
+    </tr>
+    <tr>
+        <td>Example</td>
+        <td colspan="2">@code{}
+            linux_virtual_display_exclusive = enabled
+            @endcode</td>
+    </tr>
+</table>
+
 ### virtual_display_mode
 
 <table>
