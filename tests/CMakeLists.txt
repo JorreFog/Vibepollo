@@ -361,6 +361,8 @@ sunshine_register_component(NAME test_component_display_device_policy TEST_SOURC
     PRODUCT_SOURCES "${SUNSHINE_TEST_REPOSITORY_ROOT}/src/display_device_policy.cpp")
 sunshine_register_component(NAME test_component_frame_limiter_policy TEST_SOURCE unit/test_frame_limiter_policy.cpp
     PRODUCT_SOURCES "${SUNSHINE_TEST_REPOSITORY_ROOT}/src/frame_limiter_policy.cpp")
+sunshine_register_component(NAME test_component_process_environment TEST_SOURCE unit/test_process_environment.cpp
+    LINK_LIBRARIES Boost::process Boost::system Boost::filesystem)
 if(UNIX AND NOT APPLE)
     sunshine_register_component(NAME test_component_frame_limiter_detect TEST_SOURCE unit/test_frame_limiter_detect.cpp
         PRODUCT_SOURCES

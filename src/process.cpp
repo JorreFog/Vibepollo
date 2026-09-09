@@ -1772,22 +1772,6 @@ namespace proc {
       }
 #endif
 
-#ifdef __linux__
-      if (config::frame_limiter.enable) {
-        const auto limiter_policy = rtsp_stream::make_framegen_stream_start_policy(
-          *launch_session,
-          std::nullopt,
-          config::video.capture,
-          false,  // WGC is Windows-only
-          config::frame_limiter.virtual_display_limiter_enabled(),
-          config::frame_limiter.fixed_virtual_display_refresh_multiplier()
-        );
-        for (const auto &variable : platf::frame_limiter_launch_env(limiter_policy, _env["LD_PRELOAD"].to_string())) {
-          _env[variable.name] = variable.value;
-        }
-      }
-#endif
-
       auto set_string = [&](const char *key, const std::optional<std::string> &value) {
         if (value && !value->empty()) {
           _env[key] = *value;
@@ -1842,6 +1826,28 @@ namespace proc {
       _env["SUNSHINE_LOSSLESS_SCALING_RTSS_LIMIT"] = "";
       clear_lossless_runtime_env();
     }
+
+#ifdef __linux__
+    // Outside the lossless-scaling branch on purpose. Lossless Scaling is a
+    // Windows-only third-party tool, so on Linux that branch never runs - and
+    // while this sat inside it the frame limiter environment was never injected
+    // into any launch. The limiter has nothing to do with lossless scaling.
+    if (config::frame_limiter.enable) {
+      const auto limiter_policy = rtsp_stream::make_framegen_stream_start_policy(
+        *launch_session,
+        std::nullopt,
+        config::video.capture,
+        false,  // WGC is Windows-only
+        config::frame_limiter.virtual_display_limiter_enabled(),
+        config::frame_limiter.fixed_virtual_display_refresh_multiplier()
+      );
+      for (const auto &variable : platf::frame_limiter_launch_env(limiter_policy, _env["LD_PRELOAD"].to_string())) {
+        _env[variable.name] = variable.value;
+        BOOST_LOG(debug) << "[frame_limiter] env "sv << variable.name << "="sv << variable.value
+                         << " (readback: "sv << _env[variable.name].to_string() << ")"sv;
+      }
+    }
+#endif
 
     if (!_app.output.empty() && _app.output != "null"sv) {
 #ifdef _WIN32
