@@ -16,6 +16,7 @@
 // standard includes
 #include <atomic>
 #include <chrono>
+#include <climits>
 #include <csignal>
 #include <cstdint>
 #include <cstdlib>
