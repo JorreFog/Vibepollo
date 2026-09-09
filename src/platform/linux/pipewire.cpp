@@ -15,8 +15,10 @@
 #include <spa/pod/builder.h>
 
 // local includes
+#include "capture_pacing.h"
 #include "cuda.h"
 #include "graphics.h"
+#include "src/config.h"
 #include "src/main.h"
 #include "src/platform/common.h"
 #include "src/video.h"
@@ -813,6 +815,21 @@ namespace pipewire {
     platf::capture_e capture(const push_captured_image_cb_t &push_captured_image_cb, const pull_free_image_cb_t &pull_free_image_cb, bool *cursor) override {
       auto next_frame = std::chrono::steady_clock::now();
 
+      // PipeWire pushes frames on the compositor's schedule, so waking on a grid
+      // only decides when we look, not how fresh what we find is: a frame that
+      // landed just after a grid point waits there, finished, for the rest of the
+      // interval. Arrival pacing looks as soon as a frame lands - snapshot()
+      // already blocks on the frame condition variable - and holds the rate down
+      // by dropping early frames instead of delaying kept ones.
+      const auto pacing_mode = platf::capture_pacing::parse_mode(config::video.linux_capture_pacing);
+      const bool arrival_paced = pacing_mode == platf::capture_pacing::mode_e::arrival;
+      platf::capture_pacing::arrival_pacer_t pacer {delay};
+      if (arrival_paced) {
+        BOOST_LOG(info) << "[pipewire] capture pacing: arrival (drop early frames)"sv;
+      } else {
+        BOOST_LOG(info) << "[pipewire] capture pacing: interval (fixed grid)"sv;
+      }
+
       if (pipewire.ensure_stream(mem_type, width, height, framerate, dmabuf_infos.data(), n_dmabuf_infos, display_is_nvidia) < 0) {
         BOOST_LOG(error) << "[pipewire] Failed to ensure pipewire stream. capture() failed with error.";
         return platf::capture_e::error;
@@ -831,16 +848,18 @@ namespace pipewire {
           return platf::capture_e::reinit;
         }
 
-        // Advance to (or catch up with) next delay interval
-        auto now = std::chrono::steady_clock::now();
-        while (next_frame < now) {
-          next_frame += delay;
-        }
+        if (!arrival_paced) {
+          // Advance to (or catch up with) next delay interval
+          auto now = std::chrono::steady_clock::now();
+          while (next_frame < now) {
+            next_frame += delay;
+          }
 
-        if (next_frame > now) {
-          std::this_thread::sleep_until(next_frame);
-          sleep_overshoot_logger.first_point(next_frame);
-          sleep_overshoot_logger.second_point_now_and_log();
+          if (next_frame > now) {
+            std::this_thread::sleep_until(next_frame);
+            sleep_overshoot_logger.first_point(next_frame);
+            sleep_overshoot_logger.second_point_now_and_log();
+          }
         }
 
         std::shared_ptr<platf::img_t> img_out;
@@ -863,6 +882,11 @@ namespace pipewire {
             }
             break;
           case platf::capture_e::ok:
+            // Dropping is how the rate is held: the image goes back to the pool
+            // when img_out is reassigned on the next pass.
+            if (arrival_paced && !pacer.should_emit(std::chrono::steady_clock::now())) {
+              break;
+            }
             if (!push_captured_image_cb(std::move(img_out), true)) {
               BOOST_LOG(debug) << "[pipewire] PipeWire: !push_captured_image_cb -> ok";
               return platf::capture_e::ok;

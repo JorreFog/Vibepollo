@@ -252,6 +252,11 @@ namespace config {
     /// While a virtual display is streaming, turn the physical outputs off and
     /// put them back when it ends. Linux/KWin only.
     bool linux_virtual_display_exclusive;
+
+    /// How pushed capture frames are paced: "arrival" forwards each frame as it
+    /// lands and drops early ones to hold the rate, "interval" wakes on a fixed
+    /// grid. Linux, PipeWire-based backends only.
+    std::string linux_capture_pacing;
   };
 
   struct audio_t {

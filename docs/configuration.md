@@ -1161,6 +1161,40 @@ editing the `conf` file in a text editor. Use the examples as reference.
     </tr>
 </table>
 
+### linux_capture_pacing
+
+<table>
+    <tr>
+        <td>Description</td>
+        <td colspan="2">
+            How frames from a push-based capture backend are paced.
+            `arrival` forwards each frame the moment it lands and holds the rate down by
+            dropping frames that arrive early. `interval` wakes on a fixed grid and takes
+            whatever is newest, which adds up to one frame interval of latency because a
+            frame arriving just after a grid point waits there until the next one - and
+            with source and stream at the same rate that offset is constant for the whole
+            session.
+            @note{Linux only, and only affects PipeWire-based capture (the KWin and portal
+            backends). Poll-based backends grab the screen when they wake, so the grid
+            costs them nothing.}
+            @note{`arrival` minimises latency but passes the compositor's own jitter
+            through; `interval` emits on a regular cadence at the cost of that latency.}
+        </td>
+    </tr>
+    <tr>
+        <td>Default</td>
+        <td colspan="2">@code{}
+            arrival
+            @endcode</td>
+    </tr>
+    <tr>
+        <td>Example</td>
+        <td colspan="2">@code{}
+            linux_capture_pacing = interval
+            @endcode</td>
+    </tr>
+</table>
+
 ### virtual_display_mode
 
 <table>

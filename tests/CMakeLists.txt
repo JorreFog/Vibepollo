@@ -364,6 +364,8 @@ sunshine_register_component(NAME test_component_frame_limiter_policy TEST_SOURCE
 sunshine_register_component(NAME test_component_process_environment TEST_SOURCE unit/test_process_environment.cpp
     LINK_LIBRARIES Boost::process Boost::system Boost::filesystem)
 if(UNIX AND NOT APPLE)
+    sunshine_register_component(NAME test_component_capture_pacing TEST_SOURCE unit/test_capture_pacing.cpp
+        PRODUCT_SOURCES "${SUNSHINE_TEST_REPOSITORY_ROOT}/src/platform/linux/capture_pacing.cpp")
     sunshine_register_component(NAME test_component_frame_limiter_detect TEST_SOURCE unit/test_frame_limiter_detect.cpp
         PRODUCT_SOURCES
             "${SUNSHINE_TEST_REPOSITORY_ROOT}/src/frame_limiter_policy.cpp"
